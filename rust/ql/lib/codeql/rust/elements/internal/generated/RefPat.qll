@@ -29,7 +29,12 @@ module Generated {
     override string getAPrimaryQlClass() { result = "RefPat" }
 
     /**
-     * Gets the pat of this reference pat, if it exists.
+     * Holds if this reference pattern is mut.
+     */
+    predicate isMut() { Synth::convertRefPatToRaw(this).(Raw::RefPat).isMut() }
+
+    /**
+     * Gets the pattern of this reference pattern, if it exists.
      */
     Pat getPat() {
       result = Synth::convertPatFromRaw(Synth::convertRefPatToRaw(this).(Raw::RefPat).getPat())

@@ -29,7 +29,7 @@ module Generated {
     override string getAPrimaryQlClass() { result = "ConstBlockPat" }
 
     /**
-     * Gets the block expression of this const block pat, if it exists.
+     * Gets the block expression of this const block pattern, if it exists.
      */
     BlockExpr getBlockExpr() {
       result =
@@ -42,5 +42,10 @@ module Generated {
      * Holds if `getBlockExpr()` exists.
      */
     final predicate hasBlockExpr() { exists(this.getBlockExpr()) }
+
+    /**
+     * Holds if this const block pattern is const.
+     */
+    predicate isConst() { Synth::convertConstBlockPatToRaw(this).(Raw::ConstBlockPat).isConst() }
   }
 }

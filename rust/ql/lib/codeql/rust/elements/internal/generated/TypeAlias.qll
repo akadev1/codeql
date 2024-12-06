@@ -13,7 +13,7 @@ import codeql.rust.elements.GenericParamList
 import codeql.rust.elements.internal.ItemImpl::Impl as ItemImpl
 import codeql.rust.elements.Name
 import codeql.rust.elements.TypeBoundList
-import codeql.rust.elements.TypeRef
+import codeql.rust.elements.TypeRepr
 import codeql.rust.elements.Visibility
 import codeql.rust.elements.WhereClause
 
@@ -69,6 +69,11 @@ module Generated {
     final predicate hasGenericParamList() { exists(this.getGenericParamList()) }
 
     /**
+     * Holds if this type alias is default.
+     */
+    predicate isDefault() { Synth::convertTypeAliasToRaw(this).(Raw::TypeAlias).isDefault() }
+
+    /**
      * Gets the name of this type alias, if it exists.
      */
     Name getName() {
@@ -82,17 +87,19 @@ module Generated {
     final predicate hasName() { exists(this.getName()) }
 
     /**
-     * Gets the ty of this type alias, if it exists.
+     * Gets the type representation of this type alias, if it exists.
      */
-    TypeRef getTy() {
+    TypeRepr getTypeRepr() {
       result =
-        Synth::convertTypeRefFromRaw(Synth::convertTypeAliasToRaw(this).(Raw::TypeAlias).getTy())
+        Synth::convertTypeReprFromRaw(Synth::convertTypeAliasToRaw(this)
+              .(Raw::TypeAlias)
+              .getTypeRepr())
     }
 
     /**
-     * Holds if `getTy()` exists.
+     * Holds if `getTypeRepr()` exists.
      */
-    final predicate hasTy() { exists(this.getTy()) }
+    final predicate hasTypeRepr() { exists(this.getTypeRepr()) }
 
     /**
      * Gets the type bound list of this type alias, if it exists.

@@ -7,8 +7,7 @@
 private import codeql.rust.elements.internal.generated.Synth
 private import codeql.rust.elements.internal.generated.Raw
 import codeql.rust.elements.Attr
-import codeql.rust.elements.internal.ExprImpl::Impl as ExprImpl
-import codeql.rust.elements.Label
+import codeql.rust.elements.internal.LabelableExprImpl::Impl as LabelableExprImpl
 import codeql.rust.elements.StmtList
 
 /**
@@ -32,7 +31,7 @@ module Generated {
    * INTERNAL: Do not reference the `Generated::BlockExpr` class directly.
    * Use the subclass `BlockExpr`, where the following predicates are available.
    */
-  class BlockExpr extends Synth::TBlockExpr, ExprImpl::Expr {
+  class BlockExpr extends Synth::TBlockExpr, LabelableExprImpl::LabelableExpr {
     override string getAPrimaryQlClass() { result = "BlockExpr" }
 
     /**
@@ -54,17 +53,34 @@ module Generated {
     final int getNumberOfAttrs() { result = count(int i | exists(this.getAttr(i))) }
 
     /**
-     * Gets the label of this block expression, if it exists.
+     * Holds if this block expression is async.
      */
-    Label getLabel() {
-      result =
-        Synth::convertLabelFromRaw(Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).getLabel())
-    }
+    predicate isAsync() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isAsync() }
 
     /**
-     * Holds if `getLabel()` exists.
+     * Holds if this block expression is const.
      */
-    final predicate hasLabel() { exists(this.getLabel()) }
+    predicate isConst() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isConst() }
+
+    /**
+     * Holds if this block expression is gen.
+     */
+    predicate isGen() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isGen() }
+
+    /**
+     * Holds if this block expression is move.
+     */
+    predicate isMove() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isMove() }
+
+    /**
+     * Holds if this block expression is try.
+     */
+    predicate isTry() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isTry() }
+
+    /**
+     * Holds if this block expression is unsafe.
+     */
+    predicate isUnsafe() { Synth::convertBlockExprToRaw(this).(Raw::BlockExpr).isUnsafe() }
 
     /**
      * Gets the statement list of this block expression, if it exists.

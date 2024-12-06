@@ -41,13 +41,6 @@ module Fmt {
     Printer() { this.hasQualifiedName("fmt", ["Print", "Printf", "Println"]) }
   }
 
-  /** A call to `Print` or similar. */
-  private class PrintCall extends LoggerCall::Range, DataFlow::CallNode {
-    PrintCall() { this.getTarget() instanceof Printer }
-
-    override DataFlow::Node getAMessageComponent() { result = this.getASyntacticArgument() }
-  }
-
   /** The `Fprint` function or one of its variants. */
   private class Fprinter extends TaintTracking::FunctionModel {
     Fprinter() {
@@ -110,6 +103,15 @@ module Fmt {
   /** The `Scan` function or one of its variants, all of which read from `os.Stdin`. */
   class Scanner extends Function {
     Scanner() { this.hasQualifiedName("fmt", ["Scan", "Scanf", "Scanln"]) }
+  }
+
+  private class ScannerSource extends SourceNode {
+    ScannerSource() {
+      // All of the arguments which are sources are varargs.
+      this.asExpr() = any(Scanner s).getACall().getAnImplicitVarargsArgument().asExpr()
+    }
+
+    override string getThreatModel() { result = "stdin" }
   }
 
   /**

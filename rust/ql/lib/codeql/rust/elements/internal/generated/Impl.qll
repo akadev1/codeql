@@ -10,7 +10,7 @@ import codeql.rust.elements.AssocItemList
 import codeql.rust.elements.Attr
 import codeql.rust.elements.GenericParamList
 import codeql.rust.elements.internal.ItemImpl::Impl as ItemImpl
-import codeql.rust.elements.TypeRef
+import codeql.rust.elements.TypeRepr
 import codeql.rust.elements.Visibility
 import codeql.rust.elements.WhereClause
 
@@ -78,10 +78,25 @@ module Generated {
     final predicate hasGenericParamList() { exists(this.getGenericParamList()) }
 
     /**
+     * Holds if this impl is const.
+     */
+    predicate isConst() { Synth::convertImplToRaw(this).(Raw::Impl).isConst() }
+
+    /**
+     * Holds if this impl is default.
+     */
+    predicate isDefault() { Synth::convertImplToRaw(this).(Raw::Impl).isDefault() }
+
+    /**
+     * Holds if this impl is unsafe.
+     */
+    predicate isUnsafe() { Synth::convertImplToRaw(this).(Raw::Impl).isUnsafe() }
+
+    /**
      * Gets the self ty of this impl, if it exists.
      */
-    TypeRef getSelfTy() {
-      result = Synth::convertTypeRefFromRaw(Synth::convertImplToRaw(this).(Raw::Impl).getSelfTy())
+    TypeRepr getSelfTy() {
+      result = Synth::convertTypeReprFromRaw(Synth::convertImplToRaw(this).(Raw::Impl).getSelfTy())
     }
 
     /**
@@ -92,8 +107,8 @@ module Generated {
     /**
      * Gets the trait of this impl, if it exists.
      */
-    TypeRef getTrait() {
-      result = Synth::convertTypeRefFromRaw(Synth::convertImplToRaw(this).(Raw::Impl).getTrait())
+    TypeRepr getTrait() {
+      result = Synth::convertTypeReprFromRaw(Synth::convertImplToRaw(this).(Raw::Impl).getTrait())
     }
 
     /**

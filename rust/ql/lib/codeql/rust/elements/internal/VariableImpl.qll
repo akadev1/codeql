@@ -1,6 +1,9 @@
 private import rust
+private import codeql.rust.controlflow.ControlFlowGraph
 private import codeql.rust.elements.internal.generated.ParentChild
-private import codeql.rust.elements.internal.PathExprImpl::Impl as PathExprImpl
+private import codeql.rust.elements.internal.PathExprBaseImpl::Impl as PathExprBaseImpl
+private import codeql.rust.elements.internal.FormatTemplateVariableAccessImpl::Impl as FormatTemplateVariableAccessImpl
+private import codeql.util.DenseRank
 
 module Impl {
   /**
@@ -70,14 +73,35 @@ module Impl {
    * where `definingNode` is the entire `Either::Left(x) | Either::Right(x)`
    * pattern.
    */
-  private predicate variableDecl(AstNode definingNode, IdentPat p, string name) {
-    (
-      definingNode = getOutermostEnclosingOrPat(p)
-      or
-      not exists(getOutermostEnclosingOrPat(p)) and
-      definingNode = p.getName()
-    ) and
-    name = p.getName().getText()
+  private predicate variableDecl(AstNode definingNode, AstNode p, string name) {
+    p =
+      any(SelfParam sp |
+        definingNode = sp.getName() and
+        name = sp.getName().getText() and
+        // exclude self parameters from functions without a body as these are
+        // trait method declarations without implementations
+        not exists(Function f | not f.hasBody() and f.getParamList().getSelfParam() = sp)
+      )
+    or
+    p =
+      any(IdentPat pat |
+        (
+          definingNode = getOutermostEnclosingOrPat(pat)
+          or
+          not exists(getOutermostEnclosingOrPat(pat)) and definingNode = pat.getName()
+        ) and
+        name = pat.getName().getText() and
+        // exclude for now anything starting with an uppercase character, which may be a reference to
+        // an enum constant (e.g. `None`). This excludes static and constant variables (UPPERCASE),
+        // which we don't appear to recognize yet anyway. This also assumes programmers follow the
+        // naming guidelines, which they generally do, but they're not enforced.
+        not name.charAt(0).isUppercase() and
+        // exclude parameters from functions without a body as these are trait method declarations
+        // without implementations
+        not exists(Function f | not f.hasBody() and f.getParamList().getAParam().getPat() = pat) and
+        // exclude parameters from function pointer types (e.g. `x` in `fn(x: i32) -> i32`)
+        not exists(FnPtrTypeRepr fp | fp.getParamList().getParam(_).getPat() = pat)
+      )
   }
 
   /** A variable. */
@@ -99,8 +123,11 @@ module Impl {
     /** Gets an access to this variable. */
     VariableAccess getAnAccess() { result.getVariable() = this }
 
+    /** Gets the `self` parameter that declares this variable, if one exists. */
+    SelfParam getSelfParam() { variableDecl(definingNode, result, name) }
+
     /**
-     * Gets the pattern that declares this variable.
+     * Gets the pattern that declares this variable, if any.
      *
      * Normally, the pattern is unique, except when introduced in an or pattern:
      *
@@ -112,22 +139,41 @@ module Impl {
      */
     IdentPat getPat() { variableDecl(definingNode, result, name) }
 
+    /** Gets the enclosing CFG scope for this variable declaration. */
+    CfgScope getEnclosingCfgScope() { result = definingNode.getEnclosingCfgScope() }
+
+    /** Gets the `let` statement that introduces this variable, if any. */
+    LetStmt getLetStmt() { this.getPat() = result.getPat() }
+
     /** Gets the initial value of this variable, if any. */
-    Expr getInitializer() {
-      exists(LetStmt let |
-        this.getPat() = let.getPat() and
-        result = let.getInitializer()
-      )
+    Expr getInitializer() { result = this.getLetStmt().getInitializer() }
+
+    /** Holds if this variable is captured. */
+    predicate isCaptured() { this.getAnAccess().isCapture() }
+
+    /** Gets the parameter that introduces this variable, if any. */
+    ParamBase getParameter() {
+      result = this.getSelfParam() or result.(Param).getPat() = getAVariablePatAncestor(this)
     }
+
+    /** Hold is this variable is mutable. */
+    predicate isMutable() { this.getPat().isMut() }
+
+    /** Hold is this variable is immutable. */
+    predicate isImmutable() { not this.isMutable() }
   }
 
-  /** A path expression that may access a local variable. */
-  private class VariableAccessCand extends PathExpr {
+  /**
+   * A path expression that may access a local variable. These are paths that
+   * only consists of a simple name (i.e., without generic arguments,
+   * qualifiers, etc.).
+   */
+  private class VariableAccessCand extends PathExprBase {
     string name_;
 
     VariableAccessCand() {
       exists(Path p, PathSegment ps |
-        p = this.getPath() and
+        p = this.(PathExpr).getPath() and
         not p.hasQualifier() and
         ps = p.getPart() and
         not ps.hasGenericArgList() and
@@ -136,7 +182,11 @@ module Impl {
         not ps.hasReturnTypeSyntax() and
         name_ = ps.getNameRef().getText()
       )
+      or
+      this.(FormatTemplateVariableAccess).getName() = name_
     }
+
+    string toString() { result = name_ }
 
     string getName() { result = name_ }
   }
@@ -148,7 +198,10 @@ module Impl {
       n instanceof LetStmt or
       n instanceof VariableScope
     ) and
-    exists(AstNode n0 | result = getImmediateParent(n0) |
+    exists(AstNode n0 |
+      result = getImmediateParent(n0) or
+      result = n0.(FormatTemplateVariableAccess).getArgument().getParent().getParent()
+    |
       n0 = n
       or
       n0 = getAnAncestorInVariableScope(n) and
@@ -160,14 +213,21 @@ module Impl {
   private VariableScope getEnclosingScope(AstNode n) { result = getAnAncestorInVariableScope(n) }
 
   private Pat getAVariablePatAncestor(Variable v) {
-    exists(AstNode definingNode, string name |
-      v = MkVariable(definingNode, name) and
-      variableDecl(definingNode, result, name)
-    )
+    result = v.getPat()
     or
     exists(Pat mid |
       mid = getAVariablePatAncestor(v) and
       result = getImmediatePatParent(mid)
+    )
+  }
+
+  /**
+   * Holds if a parameter declares the variable `v` inside variable scope `scope`.
+   */
+  private predicate parameterDeclInScope(Variable v, VariableScope scope) {
+    exists(Callable f |
+      v.getParameter() = f.getParamList().getAParamBase() and
+      scope = [f.(Function).getBody(), f.(ClosureExpr).getBody()]
     )
   }
 
@@ -179,51 +239,44 @@ module Impl {
     Variable v, VariableScope scope, string name, int line, int column
   ) {
     name = v.getName() and
-    exists(Pat pat | pat = getAVariablePatAncestor(v) |
-      scope =
-        any(MatchArmScope arm |
-          arm.getPat() = pat and
-          arm.getLocation().hasLocationInfo(_, line, column, _, _)
+    (
+      parameterDeclInScope(v, scope) and
+      scope.getLocation().hasLocationFileInfo(_, line, column, _, _)
+      or
+      exists(Pat pat | pat = getAVariablePatAncestor(v) |
+        scope =
+          any(MatchArmScope arm |
+            arm.getPat() = pat and
+            arm.getLocation().hasLocationFileInfo(_, line, column, _, _)
+          )
+        or
+        exists(LetStmt let |
+          let.getPat() = pat and
+          scope = getEnclosingScope(let) and
+          // for `let` statements, variables are bound _after_ the statement, i.e.
+          // not in the RHS
+          let.getLocation().hasLocationFileInfo(_, _, _, line, column)
         )
-      or
-      exists(Function f |
-        f.getParamList().getAParam().getPat() = pat and
-        scope = f.getBody() and
-        scope.getLocation().hasLocationInfo(_, line, column, _, _)
-      )
-      or
-      exists(LetStmt let |
-        let.getPat() = pat and
-        scope = getEnclosingScope(let) and
-        // for `let` statements, variables are bound _after_ the statement, i.e.
-        // not in the RHS
-        let.getLocation().hasLocationInfo(_, _, _, line, column)
-      )
-      or
-      exists(IfExpr ie, LetExpr let |
-        let.getPat() = pat and
-        ie.getCondition() = let and
-        scope = ie.getThen() and
-        scope.getLocation().hasLocationInfo(_, line, column, _, _)
-      )
-      or
-      exists(ForExpr fe |
-        fe.getPat() = pat and
-        scope = fe.getLoopBody() and
-        scope.getLocation().hasLocationInfo(_, line, column, _, _)
-      )
-      or
-      exists(ClosureExpr ce |
-        ce.getParamList().getAParam().getPat() = pat and
-        scope = ce.getBody() and
-        scope.getLocation().hasLocationInfo(_, line, column, _, _)
-      )
-      or
-      exists(WhileExpr we, LetExpr let |
-        let.getPat() = pat and
-        we.getCondition() = let and
-        scope = we.getLoopBody() and
-        scope.getLocation().hasLocationInfo(_, line, column, _, _)
+        or
+        exists(IfExpr ie, LetExpr let |
+          let.getPat() = pat and
+          ie.getCondition() = let and
+          scope = ie.getThen() and
+          scope.getLocation().hasLocationFileInfo(_, line, column, _, _)
+        )
+        or
+        exists(ForExpr fe |
+          fe.getPat() = pat and
+          scope = fe.getLoopBody() and
+          scope.getLocation().hasLocationFileInfo(_, line, column, _, _)
+        )
+        or
+        exists(WhileExpr we, LetExpr let |
+          let.getPat() = pat and
+          we.getCondition() = let and
+          scope = we.getLoopBody() and
+          scope.getLocation().hasLocationFileInfo(_, line, column, _, _)
+        )
       )
     )
   }
@@ -242,7 +295,7 @@ module Impl {
   ) {
     name = cand.getName() and
     scope = [cand.(VariableScope), getEnclosingScope(cand)] and
-    cand.getLocation().hasLocationInfo(_, startline, startcolumn, endline, endcolumn) and
+    cand.getLocation().hasLocationFileInfo(_, startline, startcolumn, endline, endcolumn) and
     nestLevel = 0
     or
     exists(VariableScope inner |
@@ -251,7 +304,7 @@ module Impl {
       // Use the location of the inner scope as the location of the access, instead of the
       // actual access location. This allows us to collapse multiple accesses in inner
       // scopes to a single entity
-      scope.getLocation().hasLocationInfo(_, startline, startcolumn, endline, endcolumn)
+      inner.getLocation().hasLocationFileInfo(_, startline, startcolumn, endline, endcolumn)
     )
   }
 
@@ -334,18 +387,30 @@ module Impl {
     }
   }
 
+  private module DenseRankInput implements DenseRankInputSig2 {
+    class C1 = VariableScope;
+
+    class C2 = string;
+
+    class Ranked = VariableOrAccessCand;
+
+    int getRank(VariableScope scope, string name, VariableOrAccessCand v) {
+      v =
+        rank[result](VariableOrAccessCand v0, int startline, int startcolumn, int endline,
+          int endcolumn |
+          v0.rankBy(name, scope, startline, startcolumn, endline, endcolumn)
+        |
+          v0 order by startline, startcolumn, endline, endcolumn
+        )
+    }
+  }
+
   /**
    * Gets the rank of `v` amongst all other declarations or access candidates
    * to a variable named `name` in the variable scope `scope`.
    */
   private int rankVariableOrAccess(VariableScope scope, string name, VariableOrAccessCand v) {
-    v =
-      rank[result + 1](VariableOrAccessCand v0, int startline, int startcolumn, int endline,
-        int endcolumn |
-        v0.rankBy(name, scope, startline, startcolumn, endline, endcolumn)
-      |
-        v0 order by startline, startcolumn, endline, endcolumn
-      )
+    v = DenseRank2<DenseRankInput>::denseRank(scope, name, result + 1)
   }
 
   /**
@@ -380,14 +445,17 @@ module Impl {
   }
 
   /** A variable access. */
-  class VariableAccess extends PathExprImpl::PathExpr instanceof VariableAccessCand {
+  class VariableAccess extends PathExprBaseImpl::PathExprBase instanceof VariableAccessCand {
     private string name;
     private Variable v;
 
-    VariableAccess() { variableAccess(_, name, v, this) }
+    VariableAccess() { variableAccess(name, v, this) }
 
     /** Gets the variable being accessed. */
     Variable getVariable() { result = v }
+
+    /** Holds if this access is a capture. */
+    predicate isCapture() { this.getEnclosingCfgScope() != v.getEnclosingCfgScope() }
 
     override string toString() { result = name }
 
@@ -401,7 +469,9 @@ module Impl {
     exists(Expr mid |
       assignmentExprDescendant(mid) and
       getImmediateParent(e) = mid and
-      not mid.(PrefixExpr).getOperatorName() = "*"
+      not mid.(PrefixExpr).getOperatorName() = "*" and
+      not mid instanceof FieldExpr and
+      not mid instanceof IndexExpr
     )
   }
 
@@ -426,10 +496,10 @@ module Impl {
       MkVariable(AstNode definingNode, string name) { variableDecl(definingNode, _, name) }
 
     cached
-    predicate variableAccess(VariableScope scope, string name, Variable v, VariableAccessCand cand) {
+    predicate variableAccess(string name, Variable v, VariableAccessCand cand) {
       v =
         min(Variable v0, int nestLevel |
-          variableReachesCand(scope, name, v0, cand, nestLevel)
+          variableReachesCand(_, name, v0, cand, nestLevel)
         |
           v0 order by nestLevel
         )

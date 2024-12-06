@@ -451,6 +451,9 @@ WARNING: module 'TaintTracking' has been deprecated and may be removed in future
 | format.cpp:162:24:162:27 | {} | format.cpp:162:24:162:27 | call to basic_format_string | TAINT |
 | format.cpp:165:13:165:23 | call to format | format.cpp:166:8:166:9 | s2 |  |
 | format.cpp:165:25:165:38 | call to source | format.cpp:165:25:165:40 | call to basic_format_string | TAINT |
+| format.cpp:169:30:169:30 | s | format.cpp:171:60:171:60 | s |  |
+| format.cpp:170:11:170:16 | call to source | format.cpp:171:63:171:63 | x |  |
+| format.cpp:171:11:171:58 | call to same_signature_as_format_but_different_name | format.cpp:172:8:172:8 | y |  |
 | map.cpp:21:28:21:28 | call to pair | map.cpp:23:2:23:2 | a |  |
 | map.cpp:21:28:21:28 | call to pair | map.cpp:24:7:24:7 | a |  |
 | map.cpp:21:28:21:28 | call to pair | map.cpp:25:7:25:7 | a |  |
@@ -6584,6 +6587,16 @@ WARNING: module 'TaintTracking' has been deprecated and may be removed in future
 | taint.cpp:767:21:767:24 | ref arg path | taint.cpp:768:8:768:11 | path |  |
 | taint.cpp:768:8:768:11 | path | taint.cpp:768:7:768:11 | * ... |  |
 | taint.cpp:778:37:778:42 | call to source | taint.cpp:779:7:779:9 | obj |  |
+| taint.cpp:785:23:785:28 | source | taint.cpp:785:23:785:28 | source |  |
+| taint.cpp:785:23:785:28 | source | taint.cpp:786:18:786:23 | source |  |
+| taint.cpp:785:23:785:28 | source | taint.cpp:790:15:790:20 | source |  |
+| taint.cpp:786:12:786:16 | call to fopen | taint.cpp:787:7:787:7 | f |  |
+| taint.cpp:786:18:786:23 | source | taint.cpp:786:12:786:16 | call to fopen | TAINT |
+| taint.cpp:789:8:789:9 | f2 | taint.cpp:790:11:790:12 | f2 |  |
+| taint.cpp:789:8:789:9 | f2 | taint.cpp:791:7:791:8 | f2 |  |
+| taint.cpp:790:10:790:12 | ref arg & ... | taint.cpp:790:11:790:12 | f2 [inner post update] |  |
+| taint.cpp:790:10:790:12 | ref arg & ... | taint.cpp:791:7:791:8 | f2 |  |
+| taint.cpp:790:11:790:12 | f2 | taint.cpp:790:10:790:12 | & ... |  |
 | vector.cpp:16:43:16:49 | source1 | vector.cpp:17:26:17:32 | source1 |  |
 | vector.cpp:16:43:16:49 | source1 | vector.cpp:31:38:31:44 | source1 |  |
 | vector.cpp:17:21:17:33 | call to vector | vector.cpp:19:14:19:14 | v |  |
